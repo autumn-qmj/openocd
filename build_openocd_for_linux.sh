@@ -22,8 +22,22 @@ sudo apt-get install -y autoconf automake autotools-dev bc bison \
     build-essential curl dejagnu expect flex gawk gperf \
     libtool patchutils texinfo python3 zip
 
+sudo apt install libusb-dev
 sudo apt-get install -y libudev-dev
+sudo apt install libhidapi-dev
+sudo apt install libjaylink-dev
+sudo apt-get install build-essential pkg-config autoconf automake libtool libusb-dev libusb-1.0-0-dev libhidapi-dev
 
+
+if [ ! -f "libusb-1.0.26.tar.bz2" ]; then
+    wget https://github.com/libusb/libusb/releases/download/v1.0.26/libusb-1.0.26.tar.bz2
+    tar -jxvf libusb-1.0.26.tar.bz2
+fi
+
+if [ ! -f "hidapi-0.13.1.tar.gz" ]; then
+    wget https://github.com/libusb/hidapi/archive/refs/tags/hidapi-0.13.1.tar.gz
+    tar -zxvf hidapi-0.13.1.tar.gz
+fi
 
 # Build openocd
 ./bootstrap
