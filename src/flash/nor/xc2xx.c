@@ -56,86 +56,104 @@
 
 #define PFU_CMD_MASS_ERASE                                  (2U)
 #define PFU_BLOCK_SIZE                                      (0x200000U)
-#define PFU0_ADDR                                           (0x10000000U)
-#define PFU1_ADDR                                           (0x10200000U)
-#define PFU2_ADDR                                           (0x14000000U)
-#define PFU3_ADDR                                           (0x14200000U)
+
+#define PFU0_ADDR_SINGLE                                    (0x10000000U)
+#define PFU1_ADDR_SINGLE                                    (0x10200000U)
+#define PFU2_ADDR_SINGLE                                    (0x10400000U)
+#define PFU3_ADDR_SINGLE                                    (0x10600000U)
+
+
+#define PFU0_ADDR_MAP_A                                     (0x10000000U)
+#define PFU1_ADDR_MAP_A                                     (0x10200000U)
+#define PFU2_ADDR_MAP_A                                     (0x14000000U)
+#define PFU3_ADDR_MAP_A                                     (0x14200000U)
+
+#define PFU0_ADDR_MAP_B                                     (0x14000000U)
+#define PFU1_ADDR_MAP_B                                     (0x14200000U)
+#define PFU2_ADDR_MAP_B                                     (0x10000000U)
+#define PFU3_ADDR_MAP_B                                     (0x10200000U)
 
 #define FLASH_SC_MODE_SET                                   (0x4002703CU)
-
+#define PFLASH_TYPE_BIT                                     (0x10000000U)
+#define DFLASH_TYPE_BIT                                     (0x40000000U)
 /*************************************************************************/
 
 #define FLASH_ERASE_TIMEOUT  100000  /*timeout count*/
 
 const int PFU_CTRL_BASE[4] ={CM_PFU0_BASE, CM_PFU1_BASE, CM_PFU2_BASE, CM_PFU3_BASE}; 
 static unsigned int dual_bank_probed = 0U;
+const uint8_t *flash_mode[] = {"FLASH_SINGLE_MAP", "FLASH_DOUBLE_A_MAP","FLASH_DOUBLE_B_MAP"};
 
-// typedef enum 
-// {
-    // FLASH_SINGLE_MAP,
-    // FLASH_DOUBLE_A_MAP,
-    // FLASH_DOUBLE_B_MAP    
-// } en_flash_mapping_mode_t;
+typedef enum 
+{
+    FLASH_SINGLE_MAP = 0,
+    FLASH_DOUBLE_A_MAP,
+    FLASH_DOUBLE_B_MAP    
+} en_flash_mapping_mode_t;
 
-// typedef enum
-// {
-    // FLASH_P_FLASH = 0,
-    // FLASH_D_FLASH,
-    // FLASH_NONE_FLASH,
-// } en_flash_type_t;
+typedef enum
+{
+    FLASH_P_FLASH = 0,
+    FLASH_D_FLASH,
+    FLASH_NONE_FLASH,
+} en_flash_type_t;
 
-// static en_flash_mapping_mode_t FLASH_GetMapMode(en_flash_type_t eFlashType)
-// {
+static int FLASH_GetMapMode(struct target *target, en_flash_type_t eFlashType, en_flash_mapping_mode_t *flash_map_mode)
+{
+
+    int retval = ERROR_OK;
+	uint32_t FLASH_Red_SCS = 0x0;
+	retval = target_read_u32(target,FLASH_SC_MODE_SET, &FLASH_Red_SCS);
+	if(retval != ERROR_OK)
+		return ERROR_FAIL;
+
+    en_flash_mapping_mode_t eRet = FLASH_SINGLE_MAP;
+
+
+    if(FLASH_P_FLASH == eFlashType)
+    {
+        if(!(FLASH_Red_SCS & 0x1))
+        {
+           eRet = FLASH_SINGLE_MAP;
+        }
+        else
+        { 
+          if((FLASH_Red_SCS & 0x4))
+          {
+             eRet = FLASH_DOUBLE_A_MAP;
+          }
+          else
+          {
+             eRet = FLASH_DOUBLE_B_MAP;
+          }
+        }
+    }
     
-    // volatile uint32_t *pAddr_SC_UCA_FDMS = (volatile uint32_t *)FLASH_SC_MODE_SET;
+
+    if(FLASH_D_FLASH == eFlashType)
+    {
+        if(!(FLASH_Red_SCS & 0x2))
+        {
+           eRet = FLASH_SINGLE_MAP;
+        }
+        else
+        { 
+          if((FLASH_Red_SCS & 0x8))
+          {
+             eRet = FLASH_DOUBLE_A_MAP;  
+          }
+          else
+          {
+             eRet = FLASH_DOUBLE_B_MAP; 
+          }
+        }
+    }
     
-    // en_flash_mapping_mode_t eRet ;
-    // eRet = FLASH_SINGLE_MAP;
+    *flash_map_mode = eRet;
    
-    // uint32_t FLASH_Red_SCS = *pAddr_SC_UCA_FDMS;
-    
-    // if(FLASH_P_FLASH == eFlashType)
-    // {
-        // if(!(FLASH_Red_SCS & 0x1))
-        // {
-           // eRet = FLASH_SINGLE_MAP;
-        // }
-        // else
-        // { 
-          // if((FLASH_Red_SCS & 0x4))
-          // {
-             // eRet = FLASH_DOUBLE_A_MAP;
-          // }
-          // else
-          // {
-             // eRet = FLASH_DOUBLE_B_MAP;
-          // }
-        // }
-    // }
-    
-    
-    // if(FLASH_D_FLASH == eFlashType)
-    // {
-        // if(!(FLASH_Red_SCS & 0x2))
-        // {
-           // eRet = FLASH_SINGLE_MAP;
-        // }
-        // else
-        // { 
-          // if((FLASH_Red_SCS & 0x8))
-          // {
-             // eRet = FLASH_DOUBLE_A_MAP;  
-          // }
-          // else
-          // {
-             // eRet = FLASH_DOUBLE_B_MAP; 
-          // }
-        // }
-    // }
-    
-
-    // return eRet;
-// }
+    LOG_INFO("Flash is in mode %x",lifecycle_str[(uint32_t)eRet]);
+    return ERROR_OK;
+}
 
 
 /*Command flash bank xc2xx <base> <size> 0 0 <target>*/
@@ -147,25 +165,109 @@ FLASH_BANK_COMMAND_HANDLER(xc2xx_flash_bank_command)
     return ERROR_OK;
 }
 
-static inline unsigned int get_pfu_instance(unsigned int addr)
+static inline unsigned int get_pdfu_instance(struct target *target, unsigned int addr)
 {   unsigned int instance = 0U;
-    if ((addr >= PFU0_ADDR) && (addr < (PFU1_ADDR + PFU_BLOCK_SIZE)))
+    int retval = ERROR_OK;
+    en_flash_type_t eFlashType = FLASH_P_FLASH;
+
+    if (addr & PFLASH_TYPE_BIT)
     {
-        instance = 0U;
+        eFlashType = FLASH_P_FLASH;
     }
-    if ((addr >= PFU1_ADDR) && (addr < (PFU2_ADDR + PFU_BLOCK_SIZE)))
+    else if (addr & DFLASH_TYPE_BIT)
     {
-        instance = 1U;
+        eFlashType = FLASH_D_FLASH;
+        
     }
-    if ((addr >= PFU2_ADDR) && (addr < (PFU2_ADDR + PFU_BLOCK_SIZE)))
+    else
     {
-        instance = 2U;
-    }
-    if ((addr >= PFU3_ADDR) && (addr < (PFU3_ADDR + PFU_BLOCK_SIZE)))
-    {
-        instance = 3U;
+        LOG_ERROR("Invalid P/DFLASH address for this device");
+        return ERROR_FAIL;
     }
     
+    en_flash_mapping_mode_t eRet =  FLASH_SINGLE_MAP;
+	retval = FLASH_GetMapMode(target, eFlashType, (en_flash_mapping_mode_t*)&eRet);
+	if(retval!=ERROR_OK)
+		return ERROR_FAIL;
+    
+
+    if(eRet == FLASH_DOUBLE_B_MAP)
+    {
+        if ((addr >= PFU0_ADDR_MAP_B) && (addr < (PFU0_ADDR_MAP_B + PFU_BLOCK_SIZE)))
+        {
+            instance = 0U;
+        }
+        else if ((addr >= PFU1_ADDR_MAP_B) && (addr < (PFU1_ADDR_MAP_B + PFU_BLOCK_SIZE)))
+        {
+            instance = 1U;
+        }
+        else if ((addr >= PFU2_ADDR_MAP_B) && (addr < (PFU2_ADDR_MAP_B + PFU_BLOCK_SIZE)))
+        {
+            instance = 2U;
+        }
+        else if ((addr >= PFU3_ADDR_MAP_B) && (addr < (PFU3_ADDR_MAP_B + PFU_BLOCK_SIZE)))
+        {
+            instance = 3U;
+        }
+        else
+        {
+            LOG_ERROR("Invalid P/DFLASH address for this device");
+            return ERROR_FAIL;          
+        }
+    }
+
+    if(eRet == FLASH_DOUBLE_A_MAP)
+    {
+        if ((addr >= PFU0_ADDR_MAP_A) && (addr < (PFU0_ADDR_MAP_A + PFU_BLOCK_SIZE)))
+        {
+            instance = 0U;
+        }
+        else if ((addr >= PFU1_ADDR_MAP_A) && (addr < (PFU1_ADDR_MAP_A + PFU_BLOCK_SIZE)))
+        {
+            instance = 1U;
+        }
+        else if ((addr >= PFU2_ADDR_MAP_A) && (addr < (PFU2_ADDR_MAP_A + PFU_BLOCK_SIZE)))
+        {
+            instance = 2U;
+        }
+        else if ((addr >= PFU3_ADDR_MAP_A) && (addr < (PFU3_ADDR_MAP_A + PFU_BLOCK_SIZE)))
+        {
+            instance = 3U;
+        }
+        else
+        {
+            LOG_ERROR("Invalid P/DFLASH address for this device");
+            return ERROR_FAIL;          
+        }
+    }
+
+    if(eRet == FLASH_SINGLE_MAP)
+    {
+        if ((addr >= PFU0_ADDR_SINGLE) && (addr < (PFU0_ADDR_SINGLE + PFU_BLOCK_SIZE)))
+        {
+            instance = 0U;
+        }
+        else if ((addr >= PFU1_ADDR_SINGLE) && (addr < (PFU1_ADDR_SINGLE + PFU_BLOCK_SIZE)))
+        {
+            instance = 1U;
+        }
+        else if ((addr >= PFU2_ADDR_SINGLE) && (addr < (PFU2_ADDR_SINGLE + PFU_BLOCK_SIZE)))
+        {
+            instance = 2U;
+        }
+        else if ((addr >= PFU3_ADDR_SINGLE) && (addr < (PFU3_ADDR_SINGLE + PFU_BLOCK_SIZE)))
+        {
+            instance = 3U;
+        }
+        else
+        {
+            LOG_ERROR("Invalid P/DFLASH address for this device");
+            return ERROR_FAIL;          
+        }
+            
+    }
+    
+
     return instance;
 
 }
@@ -192,7 +294,7 @@ static inline int xc2xx_write_protection_enable(struct flash_bank *bank, unsigne
     if(retval != ERROR_OK){
       return retval;
     }
-	  
+      
     retval = target_write_u32(target, CM_PFU2_BASE + PFU_WMPR_OFFSET,FLASH_WRITE_UNPROTECTED_VALUE1);
     if(retval != ERROR_OK){
       return retval;
@@ -202,7 +304,7 @@ static inline int xc2xx_write_protection_enable(struct flash_bank *bank, unsigne
     if(retval != ERROR_OK){
       return retval;
     }
-	  
+      
     retval = target_write_u32(target, CM_PFU3_BASE + PFU_WMPR_OFFSET,FLASH_WRITE_UNPROTECTED_VALUE1);
     if(retval != ERROR_OK){
       return retval;
@@ -212,7 +314,7 @@ static inline int xc2xx_write_protection_enable(struct flash_bank *bank, unsigne
     if(retval != ERROR_OK){
       return retval;
     }
-	  
+      
     return retval;
 
 }
@@ -237,18 +339,18 @@ static inline int xc2xx_write_protection_disable(struct flash_bank *bank, unsign
     }
     retval =  target_write_u32(target, CM_PFU3_BASE + PFU_WMR_OFFSET,PFU_WMR_WDWM);
     if(retval != ERROR_OK){
-      return retval;	  
+      return retval;      
     }
-	
+    
     return retval;
 }
-static inline int xc2xx_get_flash_status(struct flash_bank *bank, uint32_t *status, unsigned int addr)
+static inline int xc2xx_get_flash_status(struct flash_bank *bank, uint32_t *status, unsigned int instance)
 {    
     struct target *target = bank->target;
     LOG_DEBUG("Get flash busy status");
 
 
-    return target_read_u32(target,PFU_CTRL_BASE[get_pfu_instance(addr + (uint32_t)bank->base)] + PFU_FSR_OFFSET, status);
+    return target_read_u32(target,PFU_CTRL_BASE[instance] + PFU_FSR_OFFSET, status);
 }
 
 static inline int xc2xx_sector_write_protection_enable(struct flash_bank *bank, unsigned int instance)
@@ -289,7 +391,7 @@ static inline int xc2xx_sector_write_protection_enable(struct flash_bank *bank, 
     retval = target_write_u32(target, CM_PFU1_BASE + PFU_SWER3_OFFSET,0xFFFFFFFF);
     if(retval != ERROR_OK){
       return retval;
-    }	
+    }   
 
     retval = target_write_u32(target, CM_PFU2_BASE + PFU_SWER0_OFFSET,0xFFFFFFFF);
     if(retval != ERROR_OK){
@@ -323,17 +425,17 @@ static inline int xc2xx_sector_write_protection_enable(struct flash_bank *bank, 
     retval = target_write_u32(target, CM_PFU3_BASE + PFU_SWER3_OFFSET,0xFFFFFFFF);
     if(retval != ERROR_OK){
       return retval;
-    }	
+    }   
 
-	return retval;
+    return retval;
 }
 
-static int xc2xx_wait_status_busy(struct flash_bank *bank, int timeout, unsigned int addr)
+static int xc2xx_wait_status_busy(struct flash_bank *bank, int timeout, unsigned int instance)
 {
     uint32_t status;
     int retval = ERROR_OK;
     for(;;){
-        retval = xc2xx_get_flash_status(bank,&status, addr);
+        retval = xc2xx_get_flash_status(bank,&status, instance);
         if(retval != ERROR_OK){
             return retval;
         }
@@ -365,34 +467,34 @@ static int xc2xx_erase(struct flash_bank *bank, unsigned int first, unsigned int
     int retval = ERROR_OK; 
     retval = xc2xx_write_protection_enable(bank,0U);
     if(retval != ERROR_OK){
-	    return retval;
-	}
-	
-	retval = xc2xx_sector_write_protection_enable(bank,0);
+        return retval;
+    }
+    
+    retval = xc2xx_sector_write_protection_enable(bank,0);
     if(retval != ERROR_OK){
-	    return retval;
-	}
-	
+        return retval;
+    }
+    
     for(unsigned int i = first ; i <= last; ++i){
 
         /*flash memory page erase*/
-        retval = target_write_u32(target,  PFU_CTRL_BASE[get_pfu_instance(bank->sectors[i].offset + (uint32_t)bank->base)] + PFU_WMR_OFFSET, FLASH_SMART_SECTOR_ERASE_MODE);
+        retval = target_write_u32(target,  PFU_CTRL_BASE[get_pdfu_instance(target,(bank->sectors[i].offset + (uint32_t)bank->base))] + PFU_WMR_OFFSET, FLASH_SMART_SECTOR_ERASE_MODE);
         if(retval != ERROR_OK){
             return retval;
         }
-		
-        retval = target_write_u32(target,  PFU_CTRL_BASE[get_pfu_instance(bank->sectors[i].offset + (uint32_t)bank->base)] + PFU_OAR_OFFSET, bank->sectors[i].offset + (uint32_t)bank->base);
+        
+        retval = target_write_u32(target,  PFU_CTRL_BASE[get_pdfu_instance(target,(bank->sectors[i].offset + (uint32_t)bank->base))] + PFU_OAR_OFFSET, bank->sectors[i].offset + (uint32_t)bank->base);
         if(retval != ERROR_OK){
             return retval;
         }
 
-        retval = target_write_u32(target,  PFU_CTRL_BASE[get_pfu_instance(bank->sectors[i].offset + (uint32_t)bank->base)] + PFU_OSR_OFFSET, PFU_OSR_OPST);
+        retval = target_write_u32(target,  PFU_CTRL_BASE[get_pdfu_instance(target,(bank->sectors[i].offset + (uint32_t)bank->base))] + PFU_OSR_OFFSET, PFU_OSR_OPST);
         if(retval != ERROR_OK){
             return retval;
         }
  
         //wait
-        retval = xc2xx_wait_status_busy(bank,FLASH_ERASE_TIMEOUT,bank->sectors[i].offset + (uint32_t)bank->base);
+        retval = xc2xx_wait_status_busy(bank,FLASH_ERASE_TIMEOUT,get_pdfu_instance(target,(bank->sectors[i].offset + (uint32_t)bank->base)));
         if(retval != ERROR_OK){
             return retval;
         }
@@ -419,19 +521,19 @@ static int xc2xx_write(struct flash_bank *bank, const uint8_t *buffer,uint32_t o
         LOG_ERROR("Target not halted");
         return ERROR_TARGET_NOT_HALTED;
     }
-	
+    
     int retval = ERROR_OK; 
     retval = xc2xx_write_protection_enable(bank,0U);
     if(retval != ERROR_OK){
-	    return retval;
-	}
-	
-	retval = xc2xx_sector_write_protection_enable(bank,0);
+        return retval;
+    }
+    
+    retval = xc2xx_sector_write_protection_enable(bank,0);
     if(retval != ERROR_OK){
-	    return retval;
-	}
-	
-	
+        return retval;
+    }
+    
+    
     if(offset & 0x03){
         LOG_ERROR("offset 0x%x required 4-byte alignment", offset);
         return ERROR_FLASH_DST_BREAKS_ALIGNMENT;
@@ -463,54 +565,52 @@ static int xc2xx_write(struct flash_bank *bank, const uint8_t *buffer,uint32_t o
                          (buffer[i+12+1] << 8)  |
                          (buffer[i+12+2] << 16) |
                          (buffer[i+12+3] << 24);
-						 
+                         
         LOG_DEBUG("xc2xx flash write word 0x%x 0x%x 0x%08x", i,    addr,      word0);
         LOG_DEBUG("xc2xx flash write word 0x%x 0x%x 0x%08x", i+1u, addr+4u,   word1);
         LOG_DEBUG("xc2xx flash write word 0x%x 0x%x 0x%08x", i+2u, addr+8u,   word2);
         LOG_DEBUG("xc2xx flash write word 0x%x 0x%x 0x%08x", i+3u, addr+0xcu, word3);
  
         // flash memory word program
-		
-        LOG_INFO("addr=%x",(addr+ (uint32_t)bank->base));
-        retval = target_write_u32(target, PFU_CTRL_BASE[get_pfu_instance(addr+ (uint32_t)bank->base)] + PFU_WMR_OFFSET, FLASH_SMART_SINGLE_PROGRAM_MODE2);
-        if(retval != ERROR_OK){
-            return retval;
-        }
-		
-        retval = target_write_u32(target, PFU_CTRL_BASE[get_pfu_instance(addr+ (uint32_t)bank->base)] + PFU_OAR_OFFSET, addr);
+
+        retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr + (uint32_t)bank->base))] + PFU_WMR_OFFSET, FLASH_SMART_SINGLE_PROGRAM_MODE2);
         if(retval != ERROR_OK){
             return retval;
         }
 
-        retval = target_write_u32(target, PFU_CTRL_BASE[get_pfu_instance(addr+ (uint32_t)bank->base)] + PFU_PDR0_OFFSET, word0);
+        retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr + (uint32_t)bank->base))] + PFU_OAR_OFFSET, addr);
         if(retval != ERROR_OK){
             return retval;
         }
 
-        retval = target_write_u32(target, PFU_CTRL_BASE[get_pfu_instance(addr+ (uint32_t)bank->base)] + PFU_PDR1_OFFSET, word1);
+        retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr + (uint32_t)bank->base))] + PFU_PDR0_OFFSET, word0);
         if(retval != ERROR_OK){
             return retval;
         }
 
-        retval = target_write_u32(target, PFU_CTRL_BASE[get_pfu_instance(addr+ (uint32_t)bank->base)] + PFU_PDR2_OFFSET, word2);
+        retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr + (uint32_t)bank->base))] + PFU_PDR1_OFFSET, word1);
         if(retval != ERROR_OK){
             return retval;
         }
 
-        retval = target_write_u32(target, PFU_CTRL_BASE[get_pfu_instance(addr+ (uint32_t)bank->base)] + PFU_PDR3_OFFSET, word3);
+        retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr+ (uint32_t)bank->base))] + PFU_PDR2_OFFSET, word2);
+        if(retval != ERROR_OK){
+            return retval;
+        }
+
+        retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr+ (uint32_t)bank->base))] + PFU_PDR3_OFFSET, word3);
         if(retval != ERROR_OK){
             return retval;
         }
 
 
-        retval = target_write_u32(target, PFU_CTRL_BASE[get_pfu_instance(addr+ (uint32_t)bank->base)] + PFU_OSR_OFFSET,PFU_OSR_OPST);
+        retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr+ (uint32_t)bank->base))] + PFU_OSR_OFFSET,PFU_OSR_OPST);
         if(retval != ERROR_OK){
             return retval;
         }
-
 
         // wait
-        retval = xc2xx_wait_status_busy(bank, FLASH_ERASE_TIMEOUT, addr);
+        retval = xc2xx_wait_status_busy(bank, FLASH_ERASE_TIMEOUT, get_pdfu_instance(target,(addr+ (uint32_t)bank->base)));
         if (retval != ERROR_OK)
             return retval;
         addr += 16u;
@@ -589,125 +689,126 @@ static int xc2xx_mass_erase(struct flash_bank *bank, unsigned int bank_id)
     retval = xc2xx_write_protection_enable(bank, 0U);
     if(retval != ERROR_OK)
     {
-	return retval;
+    return retval;
     }
-	
+    
     retval = xc2xx_sector_write_protection_enable(bank,0);
     if(retval != ERROR_OK)
     {
-	return retval;
+    return retval;
     }
+
 
     if(bank_id == 0)
     {
-	    // flash memory mass erase
-	    retval = target_write_u32(target, CM_PFU0_BASE + PFU_WMR_OFFSET, PFU_CMD_MASS_ERASE);
-	    if (retval != ERROR_OK)
-	    {
-		return retval;
-	    }
-	    retval = target_write_u32(target, CM_PFU0_BASE + PFU_OAR_OFFSET, PFU0_ADDR);
-	    if(retval != ERROR_OK)
-	    {
-		return retval;
-	    }
-		
-	    retval = target_write_u32(target, CM_PFU0_BASE + PFU_OSR_OFFSET,PFU_OSR_OPST);
-	    if(retval != ERROR_OK)
-	    {
-		return retval;
-	    }
-		
+        // flash memory mass erase
+        retval = target_write_u32(target, CM_PFU0_BASE + PFU_WMR_OFFSET, PFU_CMD_MASS_ERASE);
+        if (retval != ERROR_OK)
+        {
+        return retval;
+        }
+        retval = target_write_u32(target, CM_PFU0_BASE + PFU_OAR_OFFSET, PFU0_ADDR_SINGLE);
+        if(retval != ERROR_OK)
+        {
+        return retval;
+        }
+        
+        retval = target_write_u32(target, CM_PFU0_BASE + PFU_OSR_OFFSET,PFU_OSR_OPST);
+        if(retval != ERROR_OK)
+        {
+        return retval;
+        }
+        
 
-	    retval = xc2xx_wait_status_busy(bank, FLASH_ERASE_TIMEOUT, PFU0_ADDR);
-	    if(retval != ERROR_OK)
-	    {
-		return retval;
-	    }
+        retval = xc2xx_wait_status_busy(bank, FLASH_ERASE_TIMEOUT, 0);
+        if(retval != ERROR_OK)
+        {
+        return retval;
+        }
 
 
-	    retval = target_write_u32(target, CM_PFU1_BASE + PFU_WMR_OFFSET, PFU_CMD_MASS_ERASE);
-	    if (retval != ERROR_OK)
-	    {
-		return retval;
+        retval = target_write_u32(target, CM_PFU1_BASE + PFU_WMR_OFFSET, PFU_CMD_MASS_ERASE);
+        if (retval != ERROR_OK)
+        {
+        return retval;
 
-	    }
-	    
-	    retval = target_write_u32(target, CM_PFU1_BASE + PFU_OAR_OFFSET, PFU1_ADDR);
-	    if(retval != ERROR_OK)
-	    {
-		return retval;
-	    }
+        }
+        
+        retval = target_write_u32(target, CM_PFU1_BASE + PFU_OAR_OFFSET, PFU0_ADDR_SINGLE);
+        if(retval != ERROR_OK)
+        {
+        return retval;
+        }
 
-	    retval = target_write_u32(target, CM_PFU1_BASE + PFU_OSR_OFFSET,PFU_OSR_OPST);
-	    if(retval != ERROR_OK)
-	    {
-	    
-		return retval;
-	    }
-		
-	    retval = xc2xx_wait_status_busy(bank, FLASH_ERASE_TIMEOUT, PFU1_ADDR);
-	    if(retval != ERROR_OK)
-	    {
-		return retval;
-	    }
+        retval = target_write_u32(target, CM_PFU1_BASE + PFU_OSR_OFFSET,PFU_OSR_OPST);
+        if(retval != ERROR_OK)
+        {
+        
+        return retval;
+        }
+        
+        retval = xc2xx_wait_status_busy(bank, FLASH_ERASE_TIMEOUT, 1);
+        if(retval != ERROR_OK)
+        {
+        return retval;
+        }
     }
     
     if(bank_id == 1)
     {
 
-	    retval = target_write_u32(target, CM_PFU2_BASE + PFU_WMR_OFFSET, PFU_CMD_MASS_ERASE);
-	    if (retval != ERROR_OK)
-	    {
-		return retval;
-	    }
-		
-	    retval = target_write_u32(target, CM_PFU2_BASE + PFU_OAR_OFFSET, PFU2_ADDR);
-	    if(retval != ERROR_OK)
-	    {
-	   	return retval;
-	    }
-		
+        retval = target_write_u32(target, CM_PFU2_BASE + PFU_WMR_OFFSET, PFU_CMD_MASS_ERASE);
+        if (retval != ERROR_OK)
+        {
+        return retval;
+        }
+        
+        retval = target_write_u32(target, CM_PFU2_BASE + PFU_OAR_OFFSET, PFU0_ADDR_SINGLE);
+        if(retval != ERROR_OK)
+        {
+        return retval;
+        }
+        
 
-	    retval = target_write_u32(target, CM_PFU2_BASE + PFU_OSR_OFFSET,PFU_OSR_OPST);
+        retval = target_write_u32(target, CM_PFU2_BASE + PFU_OSR_OFFSET,PFU_OSR_OPST);
 
-	    if(retval != ERROR_OK)
-	    {
-		return retval;
-	    }
-		
-		
-	    
-	    retval = xc2xx_wait_status_busy(bank, FLASH_ERASE_TIMEOUT, PFU2_ADDR);
-	    if (retval != ERROR_OK)
-	    {
-		return retval;
-	    }
+        if(retval != ERROR_OK)
+        {
+        return retval;
+        }
+        
+        
+        
+        retval = xc2xx_wait_status_busy(bank, FLASH_ERASE_TIMEOUT, 2);
+        if (retval != ERROR_OK)
+        {
+        return retval;
+        }
 
-	    retval = target_write_u32(target, CM_PFU3_BASE + PFU_WMR_OFFSET, PFU_CMD_MASS_ERASE);
-	    if(retval != ERROR_OK)
-	    {
-		return retval;
-	    }
-	    
-	    retval = target_write_u32(target, CM_PFU3_BASE + PFU_OAR_OFFSET, PFU3_ADDR);
-	    if(retval != ERROR_OK)
-	    {
-		return retval;
-	    }
-		
-	    retval = target_write_u32(target, CM_PFU3_BASE + PFU_OSR_OFFSET,PFU_OSR_OPST);
-	    if(retval != ERROR_OK)
-	    {
-		return retval; 
-	    }
-		
+        retval = target_write_u32(target, CM_PFU3_BASE + PFU_WMR_OFFSET, PFU_CMD_MASS_ERASE);
+        if(retval != ERROR_OK)
+        {
+        return retval;
+        }
+        
+        retval = target_write_u32(target, CM_PFU3_BASE + PFU_OAR_OFFSET, PFU0_ADDR_SINGLE);
+        if(retval != ERROR_OK)
+        {
+        return retval;
+        }
+        
+        retval = target_write_u32(target, CM_PFU3_BASE + PFU_OSR_OFFSET,PFU_OSR_OPST);
+        if(retval != ERROR_OK)
+        {
+        return retval; 
+        }
+        
 
-	    retval = xc2xx_wait_status_busy(bank, FLASH_ERASE_TIMEOUT, PFU3_ADDR);
-	    if (retval != ERROR_OK)
-	    {
-		return retval;
-	    }
+        retval = xc2xx_wait_status_busy(bank, FLASH_ERASE_TIMEOUT, 3);
+        if (retval != ERROR_OK)
+        {
+        return retval;
+        }
     }
  
     LOG_INFO("mass erase operation done");
