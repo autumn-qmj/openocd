@@ -82,7 +82,7 @@
 
 const int PFU_CTRL_BASE[4] ={CM_PFU0_BASE, CM_PFU1_BASE, CM_PFU2_BASE, CM_PFU3_BASE}; 
 static unsigned int dual_bank_probed = 0U;
-const uint8_t *flash_mode[] = {"FLASH_SINGLE_MAP", "FLASH_DOUBLE_A_MAP","FLASH_DOUBLE_B_MAP"};
+const char *flash_mode[] = {"FLASH_SINGLE_MAP", "FLASH_DOUBLE_A_MAP","FLASH_DOUBLE_B_MAP"};
 
 typedef enum 
 {
@@ -150,8 +150,6 @@ static int FLASH_GetMapMode(struct target *target, en_flash_type_t eFlashType, e
     }
     
     *flash_map_mode = eRet;
-   
-    LOG_INFO("Flash is in mode %x",lifecycle_str[(uint32_t)eRet]);
     return ERROR_OK;
 }
 
