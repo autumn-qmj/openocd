@@ -61,15 +61,83 @@
 #define PFU2_ADDR                                           (0x14000000U)
 #define PFU3_ADDR                                           (0x14200000U)
 
-#define PFU_MAP_MODE_REG                                    (0x4002703CU)
+#define FLASH_SC_MODE_SET                                   (0x4002703CU)
 
 /*************************************************************************/
-volatile uint32_t *pAddr_SC_UCA_FDMS = (volatile uint32_t *)PFU_MAP_MODE_REG;
 
 #define FLASH_ERASE_TIMEOUT  100000  /*timeout count*/
 
 const int PFU_CTRL_BASE[4] ={CM_PFU0_BASE, CM_PFU1_BASE, CM_PFU2_BASE, CM_PFU3_BASE}; 
 static unsigned int dual_bank_probed = 0U;
+
+// typedef enum 
+// {
+    // FLASH_SINGLE_MAP,
+    // FLASH_DOUBLE_A_MAP,
+    // FLASH_DOUBLE_B_MAP    
+// } en_flash_mapping_mode_t;
+
+// typedef enum
+// {
+    // FLASH_P_FLASH = 0,
+    // FLASH_D_FLASH,
+    // FLASH_NONE_FLASH,
+// } en_flash_type_t;
+
+// static en_flash_mapping_mode_t FLASH_GetMapMode(en_flash_type_t eFlashType)
+// {
+    
+    // volatile uint32_t *pAddr_SC_UCA_FDMS = (volatile uint32_t *)FLASH_SC_MODE_SET;
+    
+    // en_flash_mapping_mode_t eRet ;
+    // eRet = FLASH_SINGLE_MAP;
+   
+    // uint32_t FLASH_Red_SCS = *pAddr_SC_UCA_FDMS;
+    
+    // if(FLASH_P_FLASH == eFlashType)
+    // {
+        // if(!(FLASH_Red_SCS & 0x1))
+        // {
+           // eRet = FLASH_SINGLE_MAP;
+        // }
+        // else
+        // { 
+          // if((FLASH_Red_SCS & 0x4))
+          // {
+             // eRet = FLASH_DOUBLE_A_MAP;
+          // }
+          // else
+          // {
+             // eRet = FLASH_DOUBLE_B_MAP;
+          // }
+        // }
+    // }
+    
+    
+    // if(FLASH_D_FLASH == eFlashType)
+    // {
+        // if(!(FLASH_Red_SCS & 0x2))
+        // {
+           // eRet = FLASH_SINGLE_MAP;
+        // }
+        // else
+        // { 
+          // if((FLASH_Red_SCS & 0x8))
+          // {
+             // eRet = FLASH_DOUBLE_A_MAP;  
+          // }
+          // else
+          // {
+             // eRet = FLASH_DOUBLE_B_MAP; 
+          // }
+        // }
+    // }
+    
+
+    // return eRet;
+// }
+
+
 /*Command flash bank xc2xx <base> <size> 0 0 <target>*/
 FLASH_BANK_COMMAND_HANDLER(xc2xx_flash_bank_command)
 {
@@ -174,7 +242,7 @@ static inline int xc2xx_write_protection_disable(struct flash_bank *bank, unsign
 	
     return retval;
 }
-static inline int xc2xx_get_flash_status(struct target *target, uint32_t *status, unsigned int addr)
+static inline int xc2xx_get_flash_status(struct flash_bank *bank, uint32_t *status, unsigned int addr)
 {    
     struct target *target = bank->target;
     LOG_DEBUG("Get flash busy status");
@@ -264,7 +332,6 @@ static int xc2xx_wait_status_busy(struct flash_bank *bank, int timeout, unsigned
 {
     uint32_t status;
     int retval = ERROR_OK;
-    struct target *target = bank->target;
     for(;;){
         retval = xc2xx_get_flash_status(bank,&status, addr);
         if(retval != ERROR_OK){
@@ -480,7 +547,7 @@ static int xc2xx_probe(struct flash_bank *bank)
     bank->sectors = malloc(sizeof(struct flash_sector) * num_sectors);
  
     for(int i = 0; i < num_sectors; ++i){
-        bank->sectors[i].offset + (uint32_t)bank->base = i * sector_size;
+        bank->sectors[i].offset = i * sector_size;
         bank->sectors[i].size = sector_size;
         bank->sectors[i].is_erased = -1;
         bank->sectors[i].is_protected = 0;
