@@ -12,7 +12,8 @@
 #include <target/algorithm.h>
 #include <target/armv7m.h>
 #include <target/cortex_m.h>
-
+#include <stdio.h>
+#include <string.h>
 
 
 #define CM_PFU0_BASE                                        (0x40070000U)
@@ -120,6 +121,7 @@ typedef enum
     FLASH_D_FLASH,
     FLASH_NONE_FLASH,
 } en_flash_type_t;
+
 
 static int FLASH_GetMapMode(struct target *target, en_flash_type_t eFlashType, en_flash_mapping_mode_t *flash_map_mode)
 {
@@ -718,7 +720,7 @@ static int xc2xx_write(struct flash_bank *bank, const uint8_t *buffer,uint32_t o
     }
     
     
-    if(offset & 0x03){
+    if(offset & 0x3){
         LOG_ERROR("offset 0x%x required 4-byte alignment", offset);
         return ERROR_FLASH_DST_BREAKS_ALIGNMENT;
     }
@@ -732,8 +734,16 @@ static int xc2xx_write(struct flash_bank *bank, const uint8_t *buffer,uint32_t o
     if (bank->base & PFLASH_TYPE_BIT)
     {
         LOG_INFO("This is PFLASH writing...");
+        
         for(uint32_t i = 0; i < count; i += 16)
         {
+
+
+            int j = ((i *100U) / count ) + 1U;
+            const char *lable = "|/-\\";
+            printf("[%d%%][%c]\r", j , lable[j%4]);
+            fflush(stdout);
+            
             uint32_t word0 = (buffer[i]   << 0)  |
                             (buffer[i+1] << 8)  |
                             (buffer[i+2] << 16) |
@@ -812,6 +822,12 @@ static int xc2xx_write(struct flash_bank *bank, const uint8_t *buffer,uint32_t o
 
         for(uint32_t i = 0; i < count; i += 4)
         {
+
+            int j = ((i *100U) / count ) + 1U;
+            const char *lable = "|/-\\";
+            printf("[%d%%][%c]\r", j , lable[j%4]);
+            fflush(stdout);
+
             uint32_t word0 = (buffer[i]   << 0)  |
                              (buffer[i+1] << 8)  |
                              (buffer[i+2] << 16) |
@@ -858,6 +874,7 @@ static int xc2xx_probe(struct flash_bank *bank)
 {
 
     LOG_DEBUG("This is calling xc2xx_probe 0x%x bank number",bank->bank_number);
+
     int sector_size = 0x0;
     bank-> size = 0x0;
     int num_sectors  = 0 ;
