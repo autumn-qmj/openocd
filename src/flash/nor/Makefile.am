@@ -81,6 +81,7 @@ NOR_DRIVERS = \
 	%D%/xmc1xxx.c \
 	%D%/xmc4xxx.c \
 	%D%/xc2xx.c 
+	%D%/ry.c 
 
 NORHEADERS = \
 	%D%/core.h \
