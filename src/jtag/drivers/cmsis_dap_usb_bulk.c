@@ -529,7 +529,7 @@ static int cmsis_dap_usb_write(struct cmsis_dap *dap, int txlen, int timeout_ms)
 	tr = &dap->bdata->command_transfers[dap->pending_fifo_put_idx];
 
 	if (tr->status == CMSIS_DAP_TRANSFER_PENDING) {
-		LOG_ERROR("busy command USB transfer at %u", dap->pending_fifo_put_idx);
+		//LOG_ERROR("busy command USB transfer at %u", dap->pending_fifo_put_idx);
 		struct timeval tv = {
 			.tv_sec = timeout_ms / 1000,
 			.tv_usec = timeout_ms % 1000 * 1000
