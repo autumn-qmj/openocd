@@ -53,10 +53,12 @@
 #define FLASH_WRITE_UNPROTECTED_VALUE2                      (0xFEDCBA98U)
 
 #define PFU_FSR_RDY                                         (0x00000100U)
+#define PFU_FSR_SPWP                                        (0x00000200U)
 #define PFU_WMR_WDWM                                        (0x80000000U)
 #define PFU_OSR_OPST                                        (0x00000001U)
 #define FLASH_SMART_SECTOR_ERASE_MODE                       (3U)
 #define FLASH_SMART_SINGLE_PROGRAM_MODE2                    (6U)   
+#define FLASH_SMART_SERIES_PROGRAM_MODE1                    (0xCU)   
 
 #define PFU_CMD_MASS_ERASE                                  (2U)
 #define PFU_BLOCK_SIZE                                      (0x200000U)
@@ -594,6 +596,29 @@ static int xc2xx_wait_status_busy(struct flash_bank *bank, int timeout, unsigned
  
     return retval;
 }
+
+static int xc2xx_wait_status_write_permit(struct flash_bank *bank, int timeout, unsigned int instance)
+{
+    uint32_t status;
+    int retval = ERROR_OK;
+    for(;;){
+        retval = xc2xx_get_flash_status(bank,&status, instance);
+        if(retval != ERROR_OK){
+            return retval;
+        }
+        if((status & PFU_FSR_SPWP) == PFU_FSR_SPWP){
+            return ERROR_OK;
+        }
+        if(timeout-- <= 0){
+            LOG_DEBUG("Timed out waiting for flash: 0x%04x", status);
+            return ERROR_FAIL;
+        }
+        alive_sleep(10);
+    }
+ 
+    return retval;
+}
+
  
 static int xc2xx_erase(struct flash_bank *bank, unsigned int first, unsigned int last)
 {
@@ -734,8 +759,8 @@ static int xc2xx_write(struct flash_bank *bank, const uint8_t *buffer,uint32_t o
     if (bank->base & PFLASH_TYPE_BIT)
     {
         LOG_INFO("This is PFLASH writing...");
-        
-        for(uint32_t i = 0; i < count; i += 16)
+
+        for(uint32_t i = 0; i < count; i += 128)
         {
 
 
@@ -744,74 +769,53 @@ static int xc2xx_write(struct flash_bank *bank, const uint8_t *buffer,uint32_t o
             printf("[%d%%][%c]\r", j , lable[j%4]);
             fflush(stdout);
             
-            uint32_t word0 = (buffer[i]   << 0)  |
-                            (buffer[i+1] << 8)  |
-                            (buffer[i+2] << 16) |
-                            (buffer[i+3] << 24);
-
-            uint32_t word1 = (buffer[i+4]   << 0)  |
-                            (buffer[i+4+1] << 8)  |
-                            (buffer[i+4+2] << 16) |
-                            (buffer[i+4+3] << 24);
-
-            uint32_t word2 = (buffer[i+8]   << 0)  |
-                            (buffer[i+8+1] << 8)  |
-                            (buffer[i+8+2] << 16) |
-                            (buffer[i+8+3] << 24);
-
-            uint32_t word3 = (buffer[i+12]   << 0)  |
-                            (buffer[i+12+1] << 8)  |
-                            (buffer[i+12+2] << 16) |
-                            (buffer[i+12+3] << 24);
-                            
-            LOG_DEBUG("xc2xx flash write word 0x%x 0x%x 0x%08x", i,    addr,      word0);
-            LOG_DEBUG("xc2xx flash write word 0x%x 0x%x 0x%08x", i+1u, addr+4u,   word1);
-            LOG_DEBUG("xc2xx flash write word 0x%x 0x%x 0x%08x", i+2u, addr+8u,   word2);
-            LOG_DEBUG("xc2xx flash write word 0x%x 0x%x 0x%08x", i+3u, addr+0xcu, word3);
-    
             // flash memory word program
 
-            retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr + (uint32_t)bank->base))] + PFU_WMR_OFFSET, FLASH_SMART_SINGLE_PROGRAM_MODE2);
+            retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr + (uint32_t)bank->base))] + PFU_WMR_OFFSET, FLASH_SMART_SERIES_PROGRAM_MODE1);
             if(retval != ERROR_OK){
                 return retval;
             }
 
-            retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr + (uint32_t)bank->base))] + PFU_OAR_OFFSET, addr);
-            if(retval != ERROR_OK){
-                return retval;
-            }
-
-            retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr + (uint32_t)bank->base))] + PFU_PDR0_OFFSET, word0);
-            if(retval != ERROR_OK){
-                return retval;
-            }
-
-            retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr + (uint32_t)bank->base))] + PFU_PDR1_OFFSET, word1);
-            if(retval != ERROR_OK){
-                return retval;
-            }
-
-            retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr+ (uint32_t)bank->base))] + PFU_PDR2_OFFSET, word2);
-            if(retval != ERROR_OK){
-                return retval;
-            }
-
-            retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr+ (uint32_t)bank->base))] + PFU_PDR3_OFFSET, word3);
+            retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr + (uint32_t)bank->base))] + PFU_OAR_OFFSET, (addr + (uint32_t)bank->base));
             if(retval != ERROR_OK){
                 return retval;
             }
 
 
-            retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr+ (uint32_t)bank->base))] + PFU_OSR_OFFSET,PFU_OSR_OPST);
-            if(retval != ERROR_OK){
-                return retval;
+            for(uint32_t u = 0; u < 128; u += 16)
+            {
+                retval = xc2xx_wait_status_write_permit(bank, FLASH_ERASE_TIMEOUT, get_pdfu_instance(target,(addr+ (uint32_t)bank->base)));
+                if (retval != ERROR_OK){
+                    return retval;
+
+                }
+
+                for(uint32_t k = 0; k < 16; k += 4)
+                {
+                    uint32_t word = (buffer[i+u+k]   << 0)  |
+                                    (buffer[i+u+k+1] << 8)  |
+                                    (buffer[i+u+k+2] << 16) |
+                                    (buffer[i+u+k+3] << 24);
+
+                    retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr + (uint32_t)bank->base))] + PFU_PDR0_OFFSET + k, word);
+                    if(retval != ERROR_OK){
+                        return retval;
+                    }
+
+                }
+
+                retval = target_write_u32(target, PFU_CTRL_BASE[get_pdfu_instance(target,(addr+ (uint32_t)bank->base))] + PFU_OSR_OFFSET,PFU_OSR_OPST);
+                if(retval != ERROR_OK){
+                    return retval;
+                }
+
             }
 
             // wait
             retval = xc2xx_wait_status_busy(bank, FLASH_ERASE_TIMEOUT, get_pdfu_instance(target,(addr+ (uint32_t)bank->base)));
             if (retval != ERROR_OK)
                 return retval;
-            addr += 16u;
+            addr += 128u;
         }
  
     }
